@@ -1,0 +1,326 @@
+{
+  "info": {
+    "name": "Game Store API",
+    "description": "Complete API collection for Game Store — Express + TypeScript + PostgreSQL + Redis",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "csrfToken", "value": "" },
+    { "key": "gameId", "value": "" },
+    { "key": "userId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "description": "Check if app, DB, and Redis are all running"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/signup",
+            "description": "Register a new user. After signup → profile completion required.",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "email", "value": "testuser@gmail.com" },
+                { "key": "password", "value": "Test@1234" },
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login — Normal User",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Login as normal user. Returns 302 redirect + sets token cookie.",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "email", "value": "testuser@gmail.com" },
+                { "key": "password", "value": "Test@1234" },
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login — Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Login as super admin. Redirects to /admin/dashboard.",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "email", "value": "admin@gamestore.com" },
+                { "key": "password", "value": "DevAdmin@2024!" },
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Complete Profile",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/profile",
+            "description": "Complete user profile after signup. Required before accessing games.",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "firstName", "value": "Ravi" },
+                { "key": "lastName", "value": "Kumar" },
+                { "key": "phone", "value": "9999999999" },
+                { "key": "address", "value": "123 Main Street" },
+                { "key": "city", "value": "Hyderabad" },
+                { "key": "state", "value": "TS" },
+                { "key": "country", "value": "IN" },
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get States by Country",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/states/IN",
+            "description": "Returns JSON array of states for a country code. Used for profile dropdown. No auth needed."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/logout",
+            "description": "Logout — blacklists JWT in Redis, clears cookie.",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Games (User)",
+      "item": [
+        {
+          "name": "Browse All Games",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/games",
+            "description": "Paginated list of active games. Requires approved user session.",
+            "header": [{ "key": "Cookie", "value": "token=<your_jwt_here>" }]
+          }
+        },
+        {
+          "name": "Browse Games — Filter by Genre",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/games?genre=ACTION",
+              "query": [
+                { "key": "genre", "value": "ACTION", "description": "ACTION | ADVENTURE | PUZZLE | STRATEGY | SPORTS | RPG | SIMULATION | OTHER" },
+                { "key": "page", "value": "1" }
+              ]
+            },
+            "description": "Filter games by genre. Genre must be exact enum value.",
+            "header": [{ "key": "Cookie", "value": "token=<your_jwt_here>" }]
+          }
+        },
+        {
+          "name": "Game Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/games/{{gameId}}",
+            "description": "Single game detail page with live play count (DB + Redis buffer).",
+            "header": [{ "key": "Cookie", "value": "token=<your_jwt_here>" }]
+          }
+        },
+        {
+          "name": "Play Game",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/games/{{gameId}}/play",
+            "description": "Increment play count. Writes to Redis — flushed to DB every 60s. Returns JSON.",
+            "header": [
+              { "key": "Cookie", "value": "token=<your_jwt_here>" },
+              { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/dashboard",
+            "description": "Stats: total users, pending, total games, top 5 played. Cached in Redis for 5 min.",
+            "header": [{ "key": "Cookie", "value": "token=<admin_jwt_here>" }]
+          }
+        },
+        {
+          "name": "Pending Users List",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/users",
+            "description": "List of users who completed profile but not yet approved/rejected.",
+            "header": [{ "key": "Cookie", "value": "token=<admin_jwt_here>" }]
+          }
+        },
+        {
+          "name": "Approve User",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/users/{{userId}}/approve",
+            "description": "Approve a pending user. Invalidates user cache in Redis.",
+            "header": [
+              { "key": "Cookie", "value": "token=<admin_jwt_here>" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject User",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/users/{{userId}}/reject",
+            "description": "Reject a pending user. Invalidates user cache in Redis.",
+            "header": [
+              { "key": "Cookie", "value": "token=<admin_jwt_here>" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "All Games List (Admin)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/games?page=1",
+              "query": [{ "key": "page", "value": "1" }]
+            },
+            "description": "All games (active + inactive) with pagination.",
+            "header": [{ "key": "Cookie", "value": "token=<admin_jwt_here>" }]
+          }
+        },
+        {
+          "name": "Create Game",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/games",
+            "description": "Create a new game. Genre must be exact enum value.",
+            "header": [
+              { "key": "Cookie", "value": "token=<admin_jwt_here>" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "name", "value": "Call of Duty" },
+                { "key": "description", "value": "First person shooter game" },
+                { "key": "genre", "value": "ACTION" },
+                { "key": "thumbnailUrl", "value": "https://picsum.photos/seed/cod/400/300" },
+                { "key": "maxPlayers", "value": "100" },
+                { "key": "isActive", "value": "true" },
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Edit Game",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/games/{{gameId}}?_method=PUT",
+            "description": "Update game. Uses method-override — POST with ?_method=PUT.",
+            "header": [
+              { "key": "Cookie", "value": "token=<admin_jwt_here>" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "name", "value": "Call of Duty Updated" },
+                { "key": "description", "value": "Updated description" },
+                { "key": "genre", "value": "ACTION" },
+                { "key": "thumbnailUrl", "value": "https://picsum.photos/seed/cod/400/300" },
+                { "key": "maxPlayers", "value": "150" },
+                { "key": "isActive", "value": "true" },
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Game",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/games/{{gameId}}?_method=DELETE",
+            "description": "Delete game. Fails if game has play history (FK RESTRICT) — deactivate instead.",
+            "header": [
+              { "key": "Cookie", "value": "token=<admin_jwt_here>" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "_csrf", "value": "{{csrfToken}}" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

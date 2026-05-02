@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Game Store — Architecture & Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-right: 6px;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      margin-top: 40px;
+    }
+
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    /* Architecture boxes */
+    .arch-outer {
+      border: 2px dashed #334155;
+      border-radius: 10px;
+      padding: 20px;
+      position: relative;
+    }
+
+    .arch-outer-label {
+      position: absolute;
+      top: -12px;
+      left: 16px;
+      background: #1e293b;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 0 8px;
+    }
+
+    .arch-inner {
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      background: #0f172a;
+    }
+
+    .arch-inner-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 12px;
+    }
+
+    .middleware-chain {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .mw-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .mw-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-blue { background: #3b82f6; }
+    .dot-green { background: #22c55e; }
+    .dot-purple { background: #a855f7; }
+    .dot-orange { background: #f97316; }
+    .dot-red { background: #ef4444; }
+
+    .arrow {
+      text-align: center;
+      color: #475569;
+      font-size: 18px;
+      margin: 8px 0;
+    }
+
+    .routes-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .route-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 12px;
+    }
+
+    .route-title {
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .route-mw {
+      color: #64748b;
+      line-height: 1.8;
+    }
+
+    .route-mw span {
+      display: block;
+      padding-left: 8px;
+      border-left: 2px solid #334155;
+    }
+
+    .dbs-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .db-box {
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+      background: #0f172a;
+    }
+
+    .db-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .db-tag {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .tag-pg { background: #1e3a5f; color: #60a5fa; }
+    .tag-redis { background: #3f1515; color: #f87171; }
+
+    .db-items {
+      list-style: none;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 2;
+    }
+
+    .db-items li::before {
+      content: '→ ';
+      color: #475569;
+    }
+
+    .job-box {
+      background: #0f172a;
+      border: 1px solid #854d0e;
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+
+    .job-title {
+      color: #fb923c;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .job-desc {
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    /* Setup section */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #3b82f6;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    code {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #a5f3fc;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #a5f3fc;
+      margin-top: 10px;
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+
+    .health-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0f172a;
+      border: 1px solid #166534;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+
+    .health-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #22c55e;
+      flex-shrink: 0;
+    }
+
+    .health-text {
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .health-text span {
+      color: #22c55e;
+      font-weight: 600;
+    }
+
+    .stack-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .pill {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    footer {
+      text-align: center;
+      color: #334155;
+      font-size: 12px;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <h1>Game Store</h1>
+    <p class="subtitle">Architecture & Setup </p>
+
+    <div class="stack-pills">
+      <span class="pill">Express.js</span>
+      <span class="pill">TypeScript</span>
+      <span class="pill">PostgreSQL + Prisma</span>
+      <span class="pill">Redis</span>
+      <span class="pill">Docker</span>
+      <span class="pill">EJS</span>
+      <span class="pill">JWT</span>
+    </div>
+
+    <!-- Architecture -->
+    <h2>Architecture</h2>
+
+    <div class="section">
+      <div class="arch-outer">
+        <span class="arch-outer-label">Docker Compose</span>
+
+        <!-- App -->
+        <div class="arch-inner">
+          <div class="arch-inner-label">Express App (Node.js)</div>
+
+          <div class="middleware-chain">
+            <div style="font-size:12px;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Global Middleware</div>
+            <div class="mw-item"><span class="mw-dot dot-blue"></span><span>requestId — assigns crypto.randomUUID to every request</span></div>
+            <div class="mw-item"><span class="mw-dot dot-blue"></span><span>helmet — CSP, frameAncestors, security headers</span></div>
+            <div class="mw-item"><span class="mw-dot dot-blue"></span><span>cors — cross-origin (disabled in production)</span></div>
+            <div class="mw-item"><span class="mw-dot dot-blue"></span><span>bodyParser + cookieParser + methodOverride</span></div>
+            <div class="mw-item"><span class="mw-dot dot-blue"></span><span>setLocals — JWT → Redis user cache (60s TTL) → DB</span></div>
+          </div>
+
+          <div class="arrow">↓</div>
+
+          <div class="routes-grid">
+            <div class="route-box">
+              <div class="route-title">/auth</div>
+              <div class="route-mw">
+                <span>csrfMiddleware</span>
+                <span>authLimiter</span>
+                <span>controllers</span>
+              </div>
+            </div>
+            <div class="route-box">
+              <div class="route-title">/games</div>
+              <div class="route-mw">
+                <span>authenticate</span>
+                <span>requireProfile</span>
+                <span>requireApproved</span>
+                <span>csrfMiddleware</span>
+                <span>playLimiter (play)</span>
+                <span>controllers</span>
+              </div>
+            </div>
+            <div class="route-box">
+              <div class="route-title">/admin</div>
+              <div class="route-mw">
+                <span>authenticate</span>
+                <span>requireAdmin</span>
+                <span>csrfMiddleware</span>
+                <span>controllers</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="arrow">↓</div>
+          <div style="text-align:center;font-size:13px;color:#64748b;">Services → Prisma / Redis</div>
+
+          <div class="job-box">
+            <div class="job-title">Background Job — runs every 60s</div>
+            <div class="job-desc">
+              Redis distributed lock (one replica only) →
+              SCAN play_count:* keys →
+              GETSET atomic capture →
+              PostgreSQL update →
+              restore on DB failure
+            </div>
+          </div>
+        </div>
+
+        <!-- DBs -->
+        <div class="dbs-grid">
+          <div class="db-box">
+            <div class="db-title">
+              <span class="db-tag tag-pg">PostgreSQL</span>
+            </div>
+            <ul class="db-items">
+              <li>User</li>
+              <li>UserProfile</li>
+              <li>Game</li>
+              <li>GamePlay</li>
+            </ul>
+          </div>
+          <div class="db-box">
+            <div class="db-title">
+              <span class="db-tag tag-redis">Redis</span>
+            </div>
+            <ul class="db-items">
+              <li>user_cache:{id} — 60s TTL</li>
+              <li>play_count:{id} — write buffer</li>
+              <li>dashboard:stats — 5min TTL</li>
+              <li>blacklist:{jti} — logout tokens</li>
+              <li>lock:play_count_flush</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Migrate -->
+        <div style="margin-top:16px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-size:13px;color:#64748b;">
+          <strong style="color:#e2e8f0;">migrate service</strong> — runs <code>prisma migrate deploy</code> once before app starts.
+          App depends on <code>service_completed_successfully</code> — prevents migration lock contention in multi-replica deployments.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Setup -->
+    <h2>Setup</h2>
+
+    <div class="section">
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Clone the repository</div>
+            <pre>git clone &lt;repo-url&gt;
+cd game-store</pre>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Set up environment variables</div>
+            <div class="step-desc">Copy <code>.env.example</code> → <code>.env</code> and fill in the values.</div>
+            <pre>cp .env.example .env</pre>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Start everything</div>
+            <div class="step-desc">Migrations run automatically. Super admin is seeded on first boot.</div>
+            <pre>docker compose up</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="health-box">
+        <div class="health-dot"></div>
+        <div class="health-text">
+          Health check available at <span>GET /health</span> — returns DB and Redis status.
+        </div>
+      </div>
+    </div>
+
+    <footer>Game Store — Backend</footer>
+  </div>
+</body>
+</html>

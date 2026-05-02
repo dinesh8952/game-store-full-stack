@@ -1,0 +1,85 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+// seed: npx ts-node prisma/seed.ts
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id              String       @id @default(uuid())
+  email           String       @unique
+  passwordHash    String
+  isSuperAdmin    Boolean      @default(false)
+  status          UserStatus   @default(PENDING)
+  profileComplete Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  profile         UserProfile?
+  plays           GamePlay[]
+
+  @@index([status])
+}
+
+model UserProfile {
+  userId    String @id
+  firstName String
+  lastName  String
+  phone     String
+  address   String
+  city      String
+  state     String
+  country   String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Genre {
+  ACTION
+  ADVENTURE
+  PUZZLE
+  STRATEGY
+  SPORTS
+  RPG
+  SIMULATION
+  OTHER
+}
+
+model Game {
+  id           String     @id @default(uuid())
+  name         String
+  description  String
+  genre        Genre
+  thumbnailUrl String
+  maxPlayers   Int
+  isActive     Boolean    @default(true)
+  playCount    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  plays        GamePlay[]
+
+  @@index([isActive])
+  @@index([genre])
+}
+
+model GamePlay {
+  id       String   @id @default(uuid())
+  userId   String
+  gameId   String
+  playedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id])
+  game     Game     @relation(fields: [gameId], references: [id])
+
+  @@index([gameId])
+  @@index([userId])
+  @@index([userId, gameId])
+}

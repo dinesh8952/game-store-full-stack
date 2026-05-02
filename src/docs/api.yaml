@@ -1,0 +1,425 @@
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Check if app, DB, and Redis are running
+      responses:
+        '200':
+          description: All systems OK
+          content:
+            application/json:
+              example:
+                status: ok
+                db: ok
+                redis: ok
+
+  /auth/states/{countryCode}:
+    get:
+      tags: [Auth]
+      summary: Get states for a country
+      description: Returns list of states/provinces for profile dropdown
+      parameters:
+        - name: countryCode
+          in: path
+          required: true
+          schema:
+            type: string
+          example: IN
+      responses:
+        '200':
+          description: Array of states
+          content:
+            application/json:
+              example:
+                - name: Telangana
+                  isoCode: TS
+                - name: Andhra Pradesh
+                  isoCode: AP
+
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: Register new user
+      description: Creates account. After signup → profile completion required.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email, password, _csrf]
+              properties:
+                email:
+                  type: string
+                  example: player@test.com
+                password:
+                  type: string
+                  example: Player@1234
+                  description: Min 8 chars, 1 uppercase, 1 digit
+                _csrf:
+                  type: string
+                  description: Get from cookie csrf_token
+      responses:
+        '302':
+          description: Redirect to /auth/login on success
+        '400':
+          description: Validation error
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      description: |
+        Login for both admin and normal users — same endpoint.
+        Post-login routing:
+        - Profile incomplete → /auth/profile
+        - Pending approval → /auth/pending
+        - Rejected → /auth/rejected
+        - Super admin → /admin/dashboard
+        - Approved user → /games
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email, password, _csrf]
+              properties:
+                email:
+                  type: string
+                  example: admin@gamestore.com
+                password:
+                  type: string
+                  example: DevAdmin@2024!
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect based on user state
+        '400':
+          description: Invalid credentials
+
+  /auth/profile:
+    post:
+      tags: [Auth]
+      summary: Complete user profile
+      description: Required after signup before accessing the platform
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [firstName, lastName, phone, address, city, state, country, _csrf]
+              properties:
+                firstName:
+                  type: string
+                  example: Ravi
+                lastName:
+                  type: string
+                  example: Kumar
+                phone:
+                  type: string
+                  example: "9999999999"
+                address:
+                  type: string
+                  example: 123 Main Street
+                city:
+                  type: string
+                  example: Hyderabad
+                state:
+                  type: string
+                  example: TS
+                country:
+                  type: string
+                  example: IN
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect to /auth/pending
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      description: Blacklists JWT token in Redis (TTL = remaining token lifetime), clears cookie
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect to /auth/login
+
+  /games:
+    get:
+      tags: [Games]
+      summary: Browse active games
+      description: Paginated list of active games. Filter by genre optional.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: genre
+          in: query
+          schema:
+            type: string
+            enum: [ACTION, ADVENTURE, PUZZLE, STRATEGY, SPORTS, RPG, SIMULATION, OTHER]
+          example: ACTION
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Games list page
+        '302':
+          description: Redirect to login if not authenticated
+
+  /games/{id}:
+    get:
+      tags: [Games]
+      summary: Game detail
+      description: Single game with live play count (DB count + Redis buffer combined)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: uuid-here
+      responses:
+        '200':
+          description: Game detail page
+        '404':
+          description: Game not found or inactive
+
+  /games/{id}/play:
+    post:
+      tags: [Games]
+      summary: Play a game
+      description: |
+        Increments play count in Redis (O(1) write).
+        Background job flushes Redis → PostgreSQL every 60 seconds.
+        Rate limited to 30 plays/minute per IP.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Play recorded
+          content:
+            application/json:
+              example:
+                success: true
+        '401':
+          description: Not authenticated
+        '403':
+          description: User not approved
+        '429':
+          description: Rate limit exceeded
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Admin dashboard stats
+      description: |
+        Returns total users, pending users, total games, top 5 most played games.
+        Cached in Redis for 5 minutes. Invalidated on user approve/reject and game CRUD.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Dashboard page
+        '403':
+          description: Not admin
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Pending users list
+      description: Users who completed profile but not yet approved or rejected
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Pending users page
+
+  /admin/users/{id}/approve:
+    post:
+      tags: [Admin]
+      summary: Approve user
+      description: Approve a pending user. Invalidates their Redis cache immediately.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect to /admin/users
+
+  /admin/users/{id}/reject:
+    post:
+      tags: [Admin]
+      summary: Reject user
+      description: Reject a pending user. Invalidates their Redis cache immediately.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect to /admin/users
+
+  /admin/games:
+    get:
+      tags: [Admin]
+      summary: All games list
+      description: All games including inactive, with pagination
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Games management page
+    post:
+      tags: [Admin]
+      summary: Create game
+      description: Create a new game. Invalidates dashboard cache.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [name, description, genre, thumbnailUrl, maxPlayers, _csrf]
+              properties:
+                name:
+                  type: string
+                  example: Call of Duty
+                description:
+                  type: string
+                  example: First person shooter
+                genre:
+                  type: string
+                  enum: [ACTION, ADVENTURE, PUZZLE, STRATEGY, SPORTS, RPG, SIMULATION, OTHER]
+                  example: ACTION
+                thumbnailUrl:
+                  type: string
+                  example: https://picsum.photos/seed/cod/400/300
+                maxPlayers:
+                  type: integer
+                  example: 100
+                isActive:
+                  type: string
+                  enum: [true, false]
+                  example: "true"
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect to /admin/games on success
+
+  /admin/games/{id}:
+    post:
+      tags: [Admin]
+      summary: Edit game (use ?_method=PUT)
+      description: |
+        Update game fields. Uses method-override pattern — POST with ?_method=PUT.
+        Invalidates dashboard cache.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: _method
+          in: query
+          schema:
+            type: string
+            enum: [PUT, DELETE]
+          example: PUT
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                genre:
+                  type: string
+                  enum: [ACTION, ADVENTURE, PUZZLE, STRATEGY, SPORTS, RPG, SIMULATION, OTHER]
+                thumbnailUrl:
+                  type: string
+                maxPlayers:
+                  type: integer
+                isActive:
+                  type: string
+                  enum: [true, false]
+                _csrf:
+                  type: string
+      responses:
+        '302':
+          description: Redirect to /admin/games on success
