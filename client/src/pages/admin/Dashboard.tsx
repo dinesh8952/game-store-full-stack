@@ -28,6 +28,7 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/admin/users')} className="text-gray-300 hover:text-white text-sm transition">Users</button>
           <button onClick={() => navigate('/admin/games')} className="text-gray-300 hover:text-white text-sm transition">Games</button>
+          <button onClick={() => navigate('/games')} className="text-gray-300 hover:text-white text-sm transition">Browse Games</button>
           <button onClick={() => { logout(); navigate('/login'); }} className="text-gray-500 hover:text-gray-300 text-sm transition">Sign out</button>
         </div>
       </nav>
@@ -64,6 +65,34 @@ export default function AdminDashboard() {
             <p className="text-gray-400 text-sm">Add, edit, or remove games</p>
           </button>
         </div>
+
+        <section className="mt-8">
+          <h3 className="text-xl font-bold mb-4">Top 5 Most Played Games</h3>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            {data?.topGames?.length ? (
+              <div className="divide-y divide-gray-800">
+                {data.topGames.slice(0, 5).map((game: any, index: number) => (
+                  <div key={game.id} className="flex items-center justify-between gap-4 px-5 py-4">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <span className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center font-bold text-sm">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{game.name}</p>
+                        <p className="text-gray-400 text-sm">{game.genre}</p>
+                      </div>
+                    </div>
+                    <p className="text-purple-400 font-bold whitespace-nowrap">
+                      {game.totalPlayCount} plays
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-gray-400 text-center py-10">No plays recorded yet</div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

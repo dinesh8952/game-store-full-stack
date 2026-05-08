@@ -1,11 +1,16 @@
+process.env.JWT_SECRET = 'test_secret_for_jest_32chars_padded';
+
 import request from 'supertest';
 import app from '../src/app';
 import jwt from 'jsonwebtoken';
+import prisma from '../src/config/db';
+import * as adminService from '../src/services/admin.service';
 
 jest.mock('../src/config/db', () => ({
   __esModule: true,
   default: {
-    user: { findUnique: jest.fn(), update: jest.fn() },
+    user: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn(), findMany: jest.fn() },
+    game: { count: jest.fn(), findMany: jest.fn() },
     $queryRaw: jest.fn(),
     $connect: jest.fn(),
     $disconnect: jest.fn(),
@@ -17,7 +22,10 @@ jest.mock('../src/config/redis', () => ({
   default: {
     get: jest.fn().mockResolvedValue(null),
     set: jest.fn().mockResolvedValue('OK'),
+    setex: jest.fn().mockResolvedValue('OK'),
     del: jest.fn().mockResolvedValue(1),
+    scan: jest.fn().mockResolvedValue(['0', []]),
+    mget: jest.fn().mockResolvedValue([]),
     ping: jest.fn().mockResolvedValue('PONG'),
     exists: jest.fn().mockResolvedValue(0),
     disconnect: jest.fn(),
@@ -27,81 +35,79 @@ jest.mock('../src/config/redis', () => ({
 jest.mock('../src/services/admin.service', () => ({
   approveUser: jest.fn().mockResolvedValue({}),
   rejectUser: jest.fn().mockResolvedValue({}),
-  getPendingUsers: jest.fn().mockResolvedValue([]),
+  getPendingUsers: jest.fn().mockResolvedValue({
+    users: [],
+    total: 0,
+    pages: 0,
+    page: 1,
+    limit: 10,
+  }),
 }));
 
-import prisma from '../src/config/db';
-
 const mockUser = prisma.user as jest.Mocked<typeof prisma.user>;
+const mockAdminService = adminService as jest.Mocked<typeof adminService>;
 
-process.env.JWT_SECRET = 'test_secret_for_jest_32chars_padded';
+const adminUser = {
+  id: 'admin-1',
+  email: 'admin@test.com',
+  passwordHash: 'hash',
+  isSuperAdmin: true,
+  status: 'APPROVED' as const,
+  profileComplete: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
 
-function makeAdminCookie(isAdmin: boolean = true) {
-  const id = isAdmin ? 'admin-1' : 'user-1';
-  const token = jwt.sign(
-    { id, email: `${isAdmin ? 'admin' : 'user'}@test.com`, jti: `jti-${id}` },
-    process.env.JWT_SECRET!,
-    { expiresIn: '1h' }
-  );
-  return `token=${token}`;
+function makeToken(id: string = 'admin-1') {
+  return jwt.sign({ id, email: `${id}@test.com`, jti: `jti-${id}` }, process.env.JWT_SECRET!, { expiresIn: '1h' });
 }
 
-// Get a CSRF token from a page to use in form posts
-async function getCsrfToken(): Promise<{ token: string; csrfCookie: string }> {
-  const res = await request(app)
-    .get('/admin/users')
-    .set('Cookie', makeAdminCookie());
-  const cookieHeader = res.headers['set-cookie'] as string[] | string;
-  const cookies = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader || ''];
-  const csrfCookie = cookies.find((c: string) => c.startsWith('csrf_token=')) || '';
-  const token = csrfCookie.split(';')[0].replace('csrf_token=', '');
-  return { token, csrfCookie: csrfCookie.split(';')[0] };
-}
-
-describe('Admin — Approve / Reject User', () => {
+describe('Admin API - Users', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
+    mockUser.findUnique.mockResolvedValue(adminUser);
+  });
+
+  it('returns users for an authenticated admin', async () => {
+    const res = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ users: [], total: 0, pages: 0, page: 1, limit: 10 });
+    expect(mockAdminService.getPendingUsers).toHaveBeenCalledWith(1, 10, undefined);
+  });
+
+  it('approves a user and returns JSON', async () => {
+    const res = await request(app)
+      .post('/api/admin/users/user-1/approve')
+      .set('Authorization', `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'User approved' });
+    expect(mockAdminService.approveUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it('rejects unauthenticated access with 401', async () => {
+    const res = await request(app).post('/api/admin/users/user-1/approve');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Unauthorized');
+  });
+
+  it('blocks non-admin users with 403', async () => {
     mockUser.findUnique.mockResolvedValue({
-      id: 'admin-1', email: 'admin@test.com',
-      isSuperAdmin: true, isApproved: true,
-      isRejected: false, profileComplete: true,
-      passwordHash: 'hash', createdAt: new Date(), updatedAt: new Date(),
-    });
-  });
-
-  it('approves a user and redirects', async () => {
-    const { token, csrfCookie } = await getCsrfToken();
-    const adminCookie = makeAdminCookie();
-
-    const res = await request(app)
-      .post('/admin/users/user-1/approve')
-      .set('Cookie', [adminCookie, csrfCookie].join('; '))
-      .send({ _csrf: token });
-
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('/admin/users');
-  });
-
-  it('rejects unauthenticated access with redirect to login', async () => {
-    const res = await request(app)
-      .post('/admin/users/user-1/approve');
-
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('/auth/login');
-  });
-
-  it('blocks non-admin users with redirect', async () => {
-    mockUser.findUnique.mockResolvedValue({
-      id: 'user-1', email: 'user@test.com',
-      isSuperAdmin: false, isApproved: true,
-      isRejected: false, profileComplete: true,
-      passwordHash: 'hash', createdAt: new Date(), updatedAt: new Date(),
+      ...adminUser,
+      id: 'user-1',
+      email: 'user@test.com',
+      isSuperAdmin: false,
     });
 
     const res = await request(app)
-      .post('/admin/users/user-1/approve')
-      .set('Cookie', makeAdminCookie(false));
+      .post('/api/admin/users/user-1/approve')
+      .set('Authorization', `Bearer ${makeToken('user-1')}`);
 
-    // requireAdmin returns 403 for non-admin users
-    expect([302, 403]).toContain(res.status);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Admin access required');
   });
 });

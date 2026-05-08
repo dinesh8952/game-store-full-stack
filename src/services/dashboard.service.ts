@@ -63,7 +63,7 @@ export async function getDashboardStats() {
 
   allGamesWithRedis.sort((a, b) => b.totalPlayCount - a.totalPlayCount);
 
-  const stats = { totalUsers, pendingUsers, approvedUsers, totalGames, totalPlays, topGames: allGamesWithRedis };
+  const stats = { totalUsers, pendingUsers, approvedUsers, totalGames, totalPlays, topGames: allGamesWithRedis.slice(0, 5) };
   await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(stats));
   return stats;
 }

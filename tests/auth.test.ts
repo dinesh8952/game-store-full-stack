@@ -1,5 +1,10 @@
+process.env.JWT_SECRET = 'test_secret_for_jest_32chars_padded';
+
 import request from 'supertest';
 import app from '../src/app';
+import prisma from '../src/config/db';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 jest.mock('../src/config/db', () => ({
   __esModule: true,
@@ -24,114 +29,134 @@ jest.mock('../src/config/redis', () => ({
   },
 }));
 
-import prisma from '../src/config/db';
-import bcrypt from 'bcryptjs';
-
 const mockUser = prisma.user as jest.Mocked<typeof prisma.user>;
+const mockProfile = prisma.userProfile as jest.Mocked<typeof prisma.userProfile>;
 
-// Helper: GET a form page to extract a valid CSRF token cookie
-async function getCsrfToken(path: string): Promise<{ token: string; cookie: string }> {
-  const res = await request(app).get(path);
-  const cookieHeader = res.headers['set-cookie'] as string[] | string;
-  const cookies = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader || ''];
-  const csrfCookie = cookies.find((c: string) => c.startsWith('csrf_token=')) || '';
-  const token = csrfCookie.split(';')[0].replace('csrf_token=', '');
-  return { token, cookie: csrfCookie.split(';')[0] };
-}
+const baseUser = {
+  id: 'user-1',
+  email: 'test@example.com',
+  passwordHash: 'hashed',
+  isSuperAdmin: false,
+  status: 'PENDING' as const,
+  profileComplete: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
 
-describe('Auth — Signup', () => {
-  it('returns 302 redirect after successful signup', async () => {
-    mockUser.findUnique.mockResolvedValue(null);
-    mockUser.create.mockResolvedValue({
-      id: 'user-1', email: 'test@example.com', passwordHash: 'hashed',
-      isSuperAdmin: false, isApproved: false, isRejected: false,
-      profileComplete: false, createdAt: new Date(), updatedAt: new Date(),
-    });
+describe('Auth API - Signup', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-    const { token, cookie } = await getCsrfToken('/auth/signup');
+  it('returns JSON after successful signup', async () => {
+    mockUser.create.mockResolvedValue(baseUser);
+
     const res = await request(app)
-      .post('/auth/signup')
-      .set('Cookie', cookie)
-      .send({ email: 'test@example.com', password: 'Password1', _csrf: token });
+      .post('/api/auth/signup')
+      .send({ email: 'test@example.com', password: 'Password1' });
 
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('/auth/login');
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ message: 'Signup successful', nextStep: 'complete_profile' });
+    expect(mockUser.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ email: 'test@example.com' }),
+    });
   });
 
   it('rejects signup with invalid email', async () => {
-    const { token, cookie } = await getCsrfToken('/auth/signup');
     const res = await request(app)
-      .post('/auth/signup')
-      .set('Cookie', cookie)
-      .send({ email: 'not-an-email', password: 'Password1', _csrf: token });
+      .post('/api/auth/signup')
+      .send({ email: 'not-an-email', password: 'Password1' });
 
     expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Valid email required');
   });
 
   it('rejects signup with short password', async () => {
-    const { token, cookie } = await getCsrfToken('/auth/signup');
     const res = await request(app)
-      .post('/auth/signup')
-      .set('Cookie', cookie)
-      .send({ email: 'test@example.com', password: '123', _csrf: token });
+      .post('/api/auth/signup')
+      .send({ email: 'test@example.com', password: '123' });
 
     expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Password must be at least 8 characters');
   });
 });
 
-describe('Auth — Login', () => {
-  it('sets JWT cookie and redirects after valid login', async () => {
+describe('Auth API - Login', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns a bearer token and user JSON after valid login', async () => {
     const passwordHash = await bcrypt.hash('Password1', 10);
     mockUser.findUnique.mockResolvedValue({
-      id: 'user-1', email: 'test@example.com', passwordHash,
-      isSuperAdmin: false, isApproved: true, isRejected: false,
-      profileComplete: true, createdAt: new Date(), updatedAt: new Date(),
+      ...baseUser,
+      passwordHash,
+      status: 'APPROVED',
+      profileComplete: true,
     });
 
-    const { token, cookie } = await getCsrfToken('/auth/login');
     const res = await request(app)
-      .post('/auth/login')
-      .set('Cookie', cookie)
-      .send({ email: 'test@example.com', password: 'Password1', _csrf: token });
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'Password1' });
 
-    expect(res.status).toBe(302);
-    const setCookie = (res.headers['set-cookie'] as unknown) as string[];
-    expect(setCookie.some((c: string) => c.startsWith('token='))).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe('Bearer');
+    expect(res.body.token).toEqual(expect.any(String));
+    expect(res.body.user).toMatchObject({
+      id: 'user-1',
+      email: 'test@example.com',
+      status: 'APPROVED',
+      profileComplete: true,
+      isSuperAdmin: false,
+    });
   });
 
   it('rejects login with wrong password', async () => {
     const passwordHash = await bcrypt.hash('correctpassword', 10);
     mockUser.findUnique.mockResolvedValue({
-      id: 'user-1', email: 'test@example.com', passwordHash,
-      isSuperAdmin: false, isApproved: true, isRejected: false,
-      profileComplete: true, createdAt: new Date(), updatedAt: new Date(),
+      ...baseUser,
+      passwordHash,
+      status: 'APPROVED',
+      profileComplete: true,
     });
 
-    const { token, cookie } = await getCsrfToken('/auth/login');
     const res = await request(app)
-      .post('/auth/login')
-      .set('Cookie', cookie)
-      .send({ email: 'test@example.com', password: 'wrongpassword', _csrf: token });
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'wrongpassword' });
 
-    expect(res.status).toBe(200);
-    expect(res.text).toContain('Invalid email or password');
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Invalid email or password');
+  });
+});
+
+describe('Auth API - Profile', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('redirects unapproved user to pending screen', async () => {
-    const passwordHash = await bcrypt.hash('Password1', 10);
-    mockUser.findUnique.mockResolvedValue({
-      id: 'user-1', email: 'test@example.com', passwordHash,
-      isSuperAdmin: false, isApproved: false, isRejected: false,
-      profileComplete: true, createdAt: new Date(), updatedAt: new Date(),
+  it('completes a pending user profile', async () => {
+    mockUser.findUnique.mockResolvedValue(baseUser);
+    mockProfile.upsert.mockResolvedValue({} as any);
+    mockUser.update.mockResolvedValue({ ...baseUser, profileComplete: true });
+
+    const token = jwt.sign({ id: 'user-1', email: 'test@example.com', jti: 'jti-user-1' }, process.env.JWT_SECRET!, {
+      expiresIn: '1h',
     });
 
-    const { token, cookie } = await getCsrfToken('/auth/login');
     const res = await request(app)
-      .post('/auth/login')
-      .set('Cookie', cookie)
-      .send({ email: 'test@example.com', password: 'Password1', _csrf: token });
+      .post('/api/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        firstName: 'Test',
+        lastName: 'User',
+        phone: '9876543210',
+        address: 'Main Road',
+        city: 'Hyderabad',
+        state: 'TG',
+        country: 'IN',
+      });
 
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('/auth/pending');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'Profile completed', nextStep: 'await_approval' });
   });
 });

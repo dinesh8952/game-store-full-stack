@@ -1,29 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import { Country, State } from 'country-state-city';
 
-const COUNTRIES = [
-  { code: 'IN', name: 'India' },
-  { code: 'US', name: 'United States' },
-  { code: 'GB', name: 'United Kingdom' },
-  { code: 'AU', name: 'Australia' },
-  { code: 'CA', name: 'Canada' },
-  { code: 'SG', name: 'Singapore' },
-  { code: 'AE', name: 'United Arab Emirates' },
-  { code: 'DE', name: 'Germany' },
-  { code: 'FR', name: 'France' },
-  { code: 'JP', name: 'Japan' },
-  { code: 'NZ', name: 'New Zealand' },
-  { code: 'NL', name: 'Netherlands' },
-  { code: 'SE', name: 'Sweden' },
-  { code: 'NO', name: 'Norway' },
-  { code: 'DK', name: 'Denmark' },
-  { code: 'FI', name: 'Finland' },
-  { code: 'CH', name: 'Switzerland' },
-  { code: 'BR', name: 'Brazil' },
-  { code: 'ZA', name: 'South Africa' },
-  { code: 'NG', name: 'Nigeria' },
-];
+const VALID_COUNTRY_CODES = new Set([
+  'IN', 'US', 'GB', 'AU', 'CA', 'SG', 'AE', 'DE', 'FR', 'JP', 'NZ', 'NL', 'SE', 'NO', 'DK', 'FI', 'CH', 'BR', 'ZA', 'NG',
+]);
+
+const COUNTRIES = Country.getAllCountries()
+  .filter(country => VALID_COUNTRY_CODES.has(country.isoCode))
+  .map(country => ({ code: country.isoCode, name: country.name }));
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -31,6 +17,7 @@ export default function Profile() {
     firstName: '', lastName: '', phone: '',
     address: '', city: '', state: '', country: '',
   });
+  const states = form.country ? State.getStatesOfCountry(form.country) : [];
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -82,14 +69,28 @@ export default function Profile() {
           {field('address', 'Address', '123 Main Street')}
           <div className="grid grid-cols-2 gap-4">
             {field('city', 'City', 'Hyderabad')}
-            {field('state', 'State', 'Telangana')}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1.5">State</label>
+              <select
+                required
+                value={form.state}
+                disabled={!form.country || states.length === 0}
+                onChange={e => setForm({ ...form, state: e.target.value })}
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition disabled:opacity-60"
+              >
+                <option value="">{form.country ? 'Select a state' : 'Select country first'}</option>
+                {states.map(s => (
+                  <option key={s.isoCode} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1.5">Country</label>
             <select
               required
               value={form.country}
-              onChange={e => setForm({ ...form, country: e.target.value })}
+              onChange={e => setForm({ ...form, country: e.target.value, state: '' })}
               className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition"
             >
               <option value="">Select a country</option>

@@ -1,29 +1,20 @@
 name: game-store
 
 services:
-  migrate:
-    build: .
-    command: npx prisma migrate deploy
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
   app:
     build: .
     ports:
       - "${PORT:-3000}:3000"
     env_file:
       - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
@@ -59,7 +50,7 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
